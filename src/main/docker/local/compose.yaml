@@ -1,0 +1,34 @@
+name: weekly-reports-local
+
+services:
+  localstack:
+    build:
+      context: .
+    ports:
+      - "127.0.0.1:${LOCALSTACK_PORT:-4566}:4566"
+    environment:
+      SERVICES: dynamodb,s3,lambda,logs
+      LAMBDA_DOCKER_NETWORK: weekly-reports-local
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      PERSISTENCE: "1"
+      EVALUATIONS_TABLE: evaluations-local
+      REPORTS_BUCKET: weekly-reports-local
+      LOCALSTACK_AUTH_TOKEN: ${LOCALSTACK_AUTH_TOKEN}
+    volumes:
+      - localstack-data:/var/lib/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/weekly-reports-ready && awslocal dynamodb describe-table --table-name evaluations-local >/dev/null && awslocal s3api head-bucket --bucket weekly-reports-local"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+
+volumes:
+  localstack-data:
+
+networks:
+  default:
+    name: weekly-reports-local

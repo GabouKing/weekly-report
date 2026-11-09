@@ -1,0 +1,10 @@
+{
+  "Variables": {
+    "QUARKUS_PROFILE": "prod",
+    "EVALUATIONS_TABLE": "evaluations-local",
+    "REPORTS_BUCKET": "weekly-reports-local",
+    "QUARKUS_DYNAMODB_ENDPOINT_OVERRIDE": "http://localstack:4566",
+    "QUARKUS_S3_ENDPOINT_OVERRIDE": "http://localstack:4566",
+    "QUARKUS_S3_PATH_STYLE_ACCESS": "true"
+  }
+}
