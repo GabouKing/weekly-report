@@ -9,6 +9,7 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 
 @ApplicationScoped
 public class S3ReportPublisher implements ReportPublisher {
@@ -43,7 +44,11 @@ public class S3ReportPublisher implements ReportPublisher {
         // O XLSX ja esta em memoria: nao precisamos abrir o arquivo local.
         // Sem ACL publica; as permissoes continuam definidas pelo bucket/IAM.
         // Falhas do SDK propagam para o caso de uso, sem registrar sucesso falso.
+        LOG.infof("Iniciando publicacao no S3. bucket=%s chave=%s tamanhoBytes=%d", bucket, key, report.length);
+        long startedAt = System.nanoTime();
         s3.putObject(request, RequestBody.fromBytes(report));
-        LOG.infof("Relatorio publicado em s3://%s/%s", bucket, key);
+        LOG.infof("Relatorio publicado em s3://%s/%s tamanhoBytes=%d duracaoMs=%d",
+                bucket, key, report.length,
+                TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt));
     }
 }
