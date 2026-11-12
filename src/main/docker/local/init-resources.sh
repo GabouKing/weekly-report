@@ -23,5 +23,7 @@ awslocal s3api put-public-access-block \
 awslocal dynamodb batch-write-item \
     --request-items file:///opt/weekly-reports/evaluations.json
 
+bash /opt/weekly-reports/deploy-lambda.sh
+
 touch /tmp/weekly-reports-ready
 echo "Local resources ready: $EVALUATIONS_TABLE and $REPORTS_BUCKET"

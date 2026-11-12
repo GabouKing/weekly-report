@@ -44,132 +44,93 @@ HTTP nem permissoes reais. Valide o fluxo completo pelos passos acima.
 
 ## Teste da Lambda no LocalStack
 
-Este roteiro executa o pacote real da Lambda dentro do LocalStack, sem o controller
-HTTP temporario. Todos os comandos abaixo devem ser executados no PowerShell, na
-raiz do projeto. Use Docker Desktop com containers Linux e preencha seu token em
-`.env-local` (arquivo ignorado pelo Git). O emulador precisa de acesso a internet
-para baixar a imagem do runtime Java 21.
+Execute na raiz do projeto, no PowerShell, com Docker Desktop em modo Linux e
+LOCALSTACK_AUTH_TOKEN preenchido em `.env-local`.
 
-### 1. Iniciar os recursos locais
+### Primeira execucao ou alteracao no codigo Java
 
 ```powershell
-docker compose --env-file .env-local -f src/main/docker/local/compose.yaml up -d --build --wait
-docker compose --env-file .env-local -f src/main/docker/local/compose.yaml ps
-```
-
-O servico deve aparecer como `healthy`. A inicializacao cria a tabela
-`evaluations-local`, o bucket `weekly-reports-local` e carrega as avaliacoes de
-exemplo. A funcao Lambda sera criada no passo 3; subir o Compose nao a cadastra.
-O socket Docker e a rede `weekly-reports-local` permitem executar o runtime em
-outro container e acessar o emulador.
-
-### 2. Executar os testes e gerar o pacote
-
-```powershell
-.\mvnw.cmd test
 .\mvnw.cmd clean package -DskipTests
-Test-Path .\target\function.zip
+docker compose --env-file .env-local -f src/main/docker/local/compose.yaml up -d --build --wait --wait-timeout 600
 ```
 
-Continue apenas se o build terminar com `BUILD SUCCESS` e `Test-Path` retornar
-`True`. O ZIP contem o codigo compilado, dependencias e o template XLSX.
-Nao use `-Dlocal-http`: essa opcao retira a extensao Lambda do empacotamento.
-`-DskipTests` evita repetir os testes ja executados; nao substitui sua validacao.
+Nao use `-Dlocal-http` no empacotamento. Confirme `BUILD SUCCESS` e a existencia de
+`target/function.zip`. Execute os testes separadamente com `.\mvnw.cmd test`.
 
-### 3. Copiar os arquivos e criar a funcao (primeira vez)
+O diretorio `target` fica montado em modo somente leitura no LocalStack. O hook
+inicializa tabela, bucket e dados de exemplo; em seguida, `deploy-lambda.sh` cria
+`weekly-reports` ou atualiza seu codigo e configuracao caso ja exista.
+O estado `healthy` so e atingido depois dessa preparacao. A primeira execucao pode
+demorar enquanto o runtime Java 21 e baixado.
+
+### Proximas vezes, sem alteracao de codigo
 
 ```powershell
-docker compose --env-file .env-local -f src/main/docker/local/compose.yaml cp target/function.zip localstack:/tmp/function.zip
-docker compose --env-file .env-local -f src/main/docker/local/compose.yaml cp src/main/docker/local/lambda-environment.json localstack:/tmp/lambda-environment.json
-docker compose --env-file .env-local -f src/main/docker/local/compose.yaml exec localstack awslocal lambda create-function --function-name weekly-reports --runtime java21 --handler io.quarkus.amazon.lambda.runtime.QuarkusStreamHandler::handleRequest --role arn:aws:iam::000000000000:role/weekly-reports-local --memory-size 1024 --timeout 120 --zip-file fileb:///tmp/function.zip --environment file:///tmp/lambda-environment.json
-docker compose --env-file .env-local -f src/main/docker/local/compose.yaml exec localstack awslocal lambda wait function-active-v2 --function-name weekly-reports
+docker compose --env-file .env-local -f src/main/docker/local/compose.yaml up -d --wait --wait-timeout 600
 ```
 
-`Pending` imediatamente apos a criacao e esperado. O comando `wait` aguarda a
-funcao ficar ativa. A role informada e ficticia, exclusiva do LocalStack.
-A funcao usa o perfil `prod`, mas `lambda-environment.json` sobrescreve os endpoints
-para `http://localstack:4566`, acessivel dentro da rede Docker. Esse JSON nao deve
-ser usado na AWS real. O handler AWS e o adaptador do Quarkus; a propriedade
-`quarkus.lambda.handler=weekly-report` seleciona nosso handler dentro da aplicacao.
-
-Para conferir o cadastro:
+Ao iniciar um container parado, o hook roda novamente. Se o container ja estiver
+rodando, `up` nao executa o hook outra vez. Para publicar um ZIP recompilado sem
+reiniciar o container:
 
 ```powershell
-docker compose --env-file .env-local -f src/main/docker/local/compose.yaml exec localstack awslocal lambda list-functions
-docker compose --env-file .env-local -f src/main/docker/local/compose.yaml exec localstack awslocal lambda get-function-configuration --function-name weekly-reports --query "{Nome:FunctionName,Estado:State,Atualizacao:LastUpdateStatus,Erro:StateReason}"
+docker compose --env-file .env-local -f src/main/docker/local/compose.yaml exec localstack bash /opt/weekly-reports/deploy-lambda.sh
 ```
 
-O esperado e `State: Active` e `LastUpdateStatus: Successful`.
+Esse comando dispensa `docker cp`, `create-function` e as atualizacoes manuais.
+Se alterar o Dockerfile, JSON de ambiente ou scripts de inicializacao, execute
+novamente `up -d --build --wait --wait-timeout 600` para incorporar essas mudancas.
+Nao use `down -v`, a menos que queira apagar os dados locais.
 
-### 4. Invocar a Lambda
+### Invocar e validar
+
+A preparacao nao invoca a Lambda automaticamente. Dispare quando desejar gerar o XLSX:
 
 ```powershell
 docker compose --env-file .env-local -f src/main/docker/local/compose.yaml exec localstack awslocal lambda invoke --function-name weekly-reports --payload '{}' /tmp/lambda-response.json
 docker compose --env-file .env-local -f src/main/docker/local/compose.yaml exec localstack cat /tmp/lambda-response.json
-```
-
-A invocacao deve retornar sem `FunctionError`. O arquivo de resposta deve conter
-`null`, pois o handler retorna `Void`. `StatusCode: 200` sozinho nao comprova
-sucesso: verifique tambem a ausencia de `FunctionError`, os logs e o objeto no S3.
-
-### 5. Conferir logs e relatorio
-
-```powershell
 docker compose --env-file .env-local -f src/main/docker/local/compose.yaml exec localstack awslocal logs filter-log-events --log-group-name /aws/lambda/weekly-reports --query "events[].message" --output text
 docker compose --env-file .env-local -f src/main/docker/local/compose.yaml exec localstack awslocal s3 ls s3://weekly-reports-local/reports/ --recursive
 ```
 
-Use `filter-log-events`: a versao do `awslocal` neste container nao oferece `logs tail`.
-Procure inicio e conclusao com o mesmo `requestId`, alem da mensagem de publicacao:
+Espere resposta `null`, ausencia de `FunctionError`, logs de inicio e conclusao com
+mesmo requestId e o XLSX atualizado no S3. `StatusCode: 200` sozinho nao comprova
+sucesso. Baixe a planilha pelo dashboard: regiao `us-east-1`, bucket
+`weekly-reports-local`, prefixo `reports/`. Use `filter-log-events`: o `awslocal`
+desse container nao suporta `logs tail`.
 
-```text
-Iniciando geracao do relatorio semanal. requestId=...
-Relatorio publicado em s3://weekly-reports-local/reports/<nome>.xlsx
-Relatorio semanal gerado e publicado. requestId=...
-```
+### Configuracao e diagnostico
 
-No dashboard LocalStack, selecione `us-east-1`, abra S3, bucket
-`weekly-reports-local`, prefixo `reports/`, e baixe o XLSX. Confira datas, total,
-media com duas casas, agrupamentos e graficos com Baixa, Media e Alta.
-O horario de atualizacao deve corresponder a invocacao mais recente.
-
-O periodo atual vai da meia-noite de sete dias atras ate o instante da execucao,
-no fuso `America/Sao_Paulo` (inicio inclusivo e fim exclusivo). A carga de exemplo
-possui datas fixas de 01/11/2026 a 07/11/2026: ajuste `evaluations.json` para testar
-outros periodos. Uma consulta sem dados gera um relatorio vazio valido.
-
-### 6. Atualizar apos alterar o codigo
-
-Gere novamente o ZIP e copie os dois arquivos como nos passos 2 e 3. Nao repita
-`create-function` se a funcao ja existir; use:
+- Pacote: `target/function.zip`, incluindo codigo, dependencias e template XLSX.
+- Runtime: Java 21; memoria 1024 MB e timeout 120 s para o teste local.
+- Handler AWS: `io.quarkus.amazon.lambda.runtime.QuarkusStreamHandler::handleRequest`.
+- Handler da aplicacao: `quarkus.lambda.handler=weekly-report`.
+- `lambda-environment.json` usa perfil prod com endpoints `http://localstack:4566`.
+  Isso e exclusivo do emulador; nao envie esse arquivo para a AWS real.
+- Socket Docker e rede `weekly-reports-local` permitem executar os containers Lambda.
+- A role de teste e ficticia; nao cria IAM real.
+- Se o pacote estiver ausente, a inicializacao falha e registra uma mensagem clara.
+- Para investigar inicializacao, use:
 
 ```powershell
-docker compose --env-file .env-local -f src/main/docker/local/compose.yaml exec localstack awslocal lambda update-function-code --function-name weekly-reports --zip-file fileb:///tmp/function.zip
-docker compose --env-file .env-local -f src/main/docker/local/compose.yaml exec localstack awslocal lambda wait function-updated-v2 --function-name weekly-reports
-docker compose --env-file .env-local -f src/main/docker/local/compose.yaml exec localstack awslocal lambda update-function-configuration --function-name weekly-reports --environment file:///tmp/lambda-environment.json
-docker compose --env-file .env-local -f src/main/docker/local/compose.yaml exec localstack awslocal lambda wait function-updated-v2 --function-name weekly-reports
+docker compose --env-file .env-local -f src/main/docker/local/compose.yaml logs localstack
+docker compose --env-file .env-local -f src/main/docker/local/compose.yaml exec localstack awslocal lambda get-function-configuration --function-name weekly-reports --query "{Nome:FunctionName,Estado:State,Atualizacao:LastUpdateStatus,Erro:StateReason}"
 ```
 
-Depois, repita a invocacao e a verificacao dos logs e do S3.
+O periodo vai da meia-noite de sete dias atras ate o instante da execucao, no fuso
+America/Sao_Paulo (inicio inclusivo e fim exclusivo). A carga tem datas fixas de
+01/11 a 07/11/2026; ajuste `evaluations.json` para testar outros periodos.
+Relatorio vazio pode ser esperado quando a carga estiver fora do intervalo.
+Reiniciar preserva outros registros, mas reaplica os mesmos IDs do JSON de exemplo.
 
-### Problemas comuns e alcance da validacao
+A execucao manual anterior foi validada pelo usuario: a Lambda retornou null e os
+logs confirmaram a publicacao no S3 e a conclusao com o mesmo requestId.
+A nova automatizacao de cadastro precisa ser validada na proxima inicializacao.
+O teste local nao comprova Scheduler, IAM real, retry AWS nem dimensionamento.
+O aviso de provider Log4j foi observado sem impedir a publicacao; sua correcao segue pendente.
 
-- `Functions: []`: confirme a regiao `us-east-1` e execute `create-function`.
-- `target/function.zip` ausente: confira o build e remova `-Dlocal-http` do comando.
-- Arquivo `/tmp/lambda-environment.json` ou `/tmp/function.zip` ausente: copie-o
-  novamente. Recriar o container remove os arquivos temporarios.
-- Porta 4566 ocupada: pare a outra instancia ou ajuste `LOCALSTACK_PORT` em
-  `.env-local`. Entre containers, a porta interna continua sendo 4566.
-- `Log4j API could not find a logging provider`: foi observado no teste local,
-  sem impedir a publicacao. A integracao do logging da biblioteca ainda e pendente.
-
-Na execucao manual compartilhada nesta sessao, a Lambda iniciou com perfil `prod`,
-registrou inicio e conclusao com o mesmo requestId e publicou o XLSX no S3 local.
-Isso valida o fluxo no emulador, sem comprovar agendamento, permissoes IAM reais,
-retry da AWS ou dimensionamento de memoria. Nao use o consumo reportado pelo
-LocalStack para dimensionar a Lambda real.
-
-Guia complementar: [Lambda local](src/main/docker/local/LAMBDA.md).
+Referencias: [LocalStack Lambda](https://docs.localstack.cloud/aws/services/lambda/)
+e [Quarkus Lambda](https://quarkus.io/guides/aws-lambda/).
 
 ## Configuracao dos ambientes
 
