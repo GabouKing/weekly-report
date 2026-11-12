@@ -15,13 +15,7 @@ Teste o gerador com `.\mvnw.cmd "-Dtest=XlsxReportGeneratorTest" test`.
 
 ## Publicacao no S3 local
 
-1. Inicie o LocalStack com
-   `docker compose --env-file .env-local -f src/main/docker/local/compose.yaml up -d --build --wait`.
-2. Execute `.\mvnw.cmd quarkus:dev -Dlocal-http "-Dquarkus.http.port=8082"`.
-3. Em outro PowerShell, chame
-   `Invoke-RestMethod -Method Post http://localhost:8082/dev/weekly-reports`.
-4. No dashboard, abra S3, regiao `us-east-1`, bucket `weekly-reports-local`, prefixo `reports/`.
-   Baixe o XLSX e confira as abas, os totais e os graficos.
+Execute o roteiro de teste da Lambda no LocalStack abaixo para gerar e publicar o XLSX. Depois, abra S3 no dashboard, selecione a regiao us-east-1, o bucket weekly-reports-local e o prefixo reports/. Baixe a planilha para conferir as abas, os totais e os graficos.
 
 Para listar pelo terminal:
 
@@ -54,7 +48,7 @@ LOCALSTACK_AUTH_TOKEN preenchido em `.env-local`.
 docker compose --env-file .env-local -f src/main/docker/local/compose.yaml up -d --build --wait --wait-timeout 600
 ```
 
-Nao use `-Dlocal-http` no empacotamento. Confirme `BUILD SUCCESS` e a existencia de
+Confirme `BUILD SUCCESS` e a existencia de
 `target/function.zip`. Execute os testes separadamente com `.\mvnw.cmd test`.
 
 O diretorio `target` fica montado em modo somente leitura no LocalStack. O hook
@@ -134,11 +128,7 @@ e [Quarkus Lambda](https://quarkus.io/guides/aws-lambda/).
 
 ## Configuracao dos ambientes
 
-Para testar pelo controller temporario, execute `./mvnw quarkus:dev -Dlocal-http`
-(Windows: `.\mvnw.cmd quarkus:dev -Dlocal-http`). Esse modo habilita o REST e
-exclui a extensao Lambda para evitar conflito entre os servidores locais.
-Chame `POST http://localhost:8082/dev/weekly-reports`; a localizacao do arquivo aparece no console.
-Sem `-Dlocal-http`, o projeto usa a extensao Lambda normalmente.
+O projeto executa o caso de uso pelo handler Lambda. Para testar localmente, use o pacote function.zip no LocalStack conforme o roteiro acima.
 
 - LocalStack: iniciar o Compose com `--env-file .env-local` e executar a aplicacao
   com `-Dquarkus.profile=dev`. `.env-local` e usado pelo Compose; ele nao e

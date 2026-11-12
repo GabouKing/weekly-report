@@ -10,7 +10,7 @@ LOCALSTACK_AUTH_TOKEN preenchido em `.env-local`.
 docker compose --env-file .env-local -f src/main/docker/local/compose.yaml up -d --build --wait --wait-timeout 600
 ```
 
-Nao use `-Dlocal-http` no empacotamento. Confirme `BUILD SUCCESS` e a existencia de
+Confirme `BUILD SUCCESS` e a existencia de
 `target/function.zip`. Execute os testes separadamente com `.\mvnw.cmd test`.
 
 O diretorio `target` fica montado em modo somente leitura no LocalStack. O hook

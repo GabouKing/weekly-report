@@ -43,11 +43,21 @@
             <groupId>org.apache.poi</groupId>
             <artifactId>poi-ooxml</artifactId>
             <version>5.5.1</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.logging.log4j</groupId>
+                    <artifactId>log4j-api</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
-        <!-- REST annotations used by the temporary dev-only controller. -->
+        <!-- Encaminha os logs do Apache POI para o JBoss Log Manager do Quarkus. -->
         <dependency>
-            <groupId>jakarta.ws.rs</groupId>
-            <artifactId>jakarta.ws.rs-api</artifactId>
+            <groupId>org.jboss.logmanager</groupId>
+            <artifactId>log4j2-jboss-logmanager</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-amazon-lambda</artifactId>
         </dependency>
         <dependency>
             <groupId>io.quarkus</groupId>
@@ -68,11 +78,6 @@
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-junit</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>io.rest-assured</groupId>
-            <artifactId>rest-assured</artifactId>
             <scope>test</scope>
         </dependency>
 
@@ -134,40 +139,6 @@
     </build>
 
     <profiles>
-        <profile>
-            <id>lambda</id>
-            <activation>
-                <property>
-                    <name>!local-http</name>
-                </property>
-            </activation>
-            <dependencies>
-                <dependency>
-                    <groupId>io.quarkus</groupId>
-                    <artifactId>quarkus-amazon-lambda</artifactId>
-                </dependency>
-            </dependencies>
-        </profile>
-        <profile>
-            <id>local-http</id>
-            <activation>
-                <property>
-                    <name>local-http</name>
-                </property>
-            </activation>
-            <dependencies>
-                <dependency>
-                    <groupId>io.quarkus</groupId>
-                    <artifactId>quarkus-rest</artifactId>
-                </dependency>
-                <!-- Compile existing handlers without starting the Lambda extension. -->
-                <dependency>
-                    <groupId>com.amazonaws</groupId>
-                    <artifactId>aws-lambda-java-core</artifactId>
-                    <version>1.4.0</version>
-                </dependency>
-            </dependencies>
-        </profile>
         <profile>
             <id>native</id>
             <activation>

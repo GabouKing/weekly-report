@@ -6,7 +6,7 @@ package=/opt/weekly-reports/build/function.zip
 configuration=/opt/weekly-reports/lambda-environment.json
 
 if [ ! -s "$package" ]; then
-    echo "Pacote function.zip ausente. Execute .\mvnw.cmd clean package -DskipTests na raiz, sem -Dlocal-http, e reinicie o LocalStack." >&2
+    echo "Pacote function.zip ausente. Execute .\mvnw.cmd clean package -DskipTests na raiz e reinicie o LocalStack." >&2
     exit 1
 fi
 
